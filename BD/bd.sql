@@ -133,20 +133,21 @@ BEFORE UPDATE ON calls FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- Applicants / Users / Sessions / Resets / Invites / Activation
 -- =============================
 CREATE TABLE IF NOT EXISTS applicants (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  rut_number   BIGINT NOT NULL,
-  rut_dv       CHAR(1)  NOT NULL,
-  first_name   TEXT    NOT NULL,
-  last_name    TEXT    NOT NULL,
-  full_name    TEXT    GENERATED ALWAYS AS (btrim(first_name || ' ' || last_name)) STORED,
-  birth_date   DATE,
-  email        CITEXT,
-  phone        TEXT,
-  address      TEXT,
-  commune      TEXT,
-  region       TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rut_number     BIGINT NOT NULL,
+  rut_dv         CHAR(1)  NOT NULL,
+  first_name     TEXT    NOT NULL,
+  last_name      TEXT    NOT NULL,
+  full_name      TEXT    GENERATED ALWAYS AS (btrim(first_name || ' ' || last_name)) STORED,
+  birth_date     DATE,
+  email          CITEXT,
+  phone          TEXT,
+  address        TEXT,
+  commune        TEXT,
+  region         TEXT,
+  institution_id UUID REFERENCES institutions(id) ON DELETE SET NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT uq_applicants_rut UNIQUE (rut_number, rut_dv)
 );
 CREATE INDEX IF NOT EXISTS idx_applicants_email ON applicants(email);
