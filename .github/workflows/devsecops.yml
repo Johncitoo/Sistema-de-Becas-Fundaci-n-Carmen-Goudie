@@ -1,0 +1,128 @@
+name: DevSecOps Security Pipeline
+
+on:
+  push:
+    branches: [ "main", "feat/**" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  security-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      # 1. Checkout del código
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Configuración de Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # 3. Detección de secretos con Gitleaks
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Análisis Estático de Código (SAST) con Semgrep
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/nodejs
+            p/typescript
+            p/react
+
+      # 5. Análisis de Código con CodeQL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # 6. Escaneo de Dependencias con npm audit
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ./frontend
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      # 7. Escaneo de Vulnerabilidades en Dependencias con Trivy
+      - name: Run Trivy (Filesystem Scan)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './frontend'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # 8. Análisis de Seguridad con ESLint
+      - name: Run ESLint Security
+        working-directory: ./frontend
+        run: |
+          npm run lint
+        continue-on-error: true
+
+      # 9. Verificar configuraciones de seguridad
+      - name: Check Security Headers
+        run: |
+          echo "Verificando configuraciones de seguridad..."
+          if [ -f "frontend/vercel.json" ]; then
+            echo "✓ vercel.json encontrado"
+          fi
+
+  backend-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Análisis de seguridad SQL
+      - name: Check SQL Files
+        run: |
+          echo "Verificando archivos SQL..."
+          find . -name "*.sql" -type f | while read file; do
+            echo "Analizando: $file"
+            # Verificar inyección SQL potencial
+            grep -n "EXECUTE\|CONCAT\|'+'\|\"\"" "$file" || true
+          done
+
+      # Verificar configuraciones de backend
+      - name: Verify Backend Security
+        working-directory: ./backend
+        run: |
+          echo "Verificando seguridad del backend..."
+          # Verificar archivos .env no están en el repo
+          if [ -f ".env" ]; then
+            echo "⚠️ ADVERTENCIA: Archivo .env encontrado en el repositorio"
+            exit 1
+          fi
